@@ -1,6 +1,6 @@
 // Version
 #define APP_NAME "Cube Mapper"
-#define APP_VERSION "MaxP v2.3.1"
+#define APP_VERSION "MaxP v2.3.5"
 
 // -----------------------------------------------------------------------------
 // CONFIGURATION
@@ -24,11 +24,11 @@
 #define SLEEP_LOW_VOLTAGE 3.4       // Below this voltage, stay in deep sleep
 
 #define USB_POWER_VOLTAGE 4.15     // Above this voltage, assume we have unlimited power (4.1 is typical)
-#define GPS_LOST_WAIT_S (5 * 60)   // How long after losing GPS do we send a lost packet?
+#define GPS_LOST_WAIT_S (5 * 60)   // How long after losing GPS do we call it lost?
 #define GPS_LOST_TIME_S (15 * 60)  // How often to send Lost GPS packets?
 
-#define JOIN_TIMEOUT_S (5 * 60)      // How long to spend trying to Join/re-Join
-#define JOIN_RETRY_TIME_S (15 * 60)  // Join Timeout/Retry sleep interval
+#define JOIN_TIMEOUT_S (1 * 60)      // How long to spend trying to Join/re-Join
+#define JOIN_RETRY_TIME_S (1 * 60)  // Join Timeout/Retry sleep interval
 
 // Deadzone defines a circular area where no map packets will originate.
 // Set Radius to zero to disable, or leave it enabled to select center position from menu.

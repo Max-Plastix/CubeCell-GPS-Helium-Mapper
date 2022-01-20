@@ -17,6 +17,8 @@
 #include "HT_SSD1306Wire.h"   // HelTec's old version of SSD1306Wire.h
 #include "LoRaWan_APP.h"
 #include "cyPm.h"  // For deep sleep
+#include "hw.h"    // for CyDelay()
+#include "timeServer.h"
 //#include "TinyGPS++.h"        // More recent/superior library
 #include "configuration.h"  // User configuration
 #include "credentials.h"    // Helium LoRaWAN credentials
@@ -29,7 +31,7 @@ extern uint8_t isDispayOn;      // [sic] Defined in LoRaWan_APP.cpp
 
 extern uint32_t UpLinkCounter;    // FCnt, Frame Count, Uplink Sequence Number
 extern bool wakeByUart;           // Declared in binary-only AT_Command.o!
-extern HardwareSerial GPSSerial;  // Defined in GPSTrans.cpp
+extern HardwareSerial GPSSerial;  // Defined in GPSTrans.cpp as UART_NUM_1
 Air530ZClass AirGPS;              // Just for Init.  Has some Air530Z specials.
 // TinyGPSPlus GPS;                  // Avoid the Heltec library as much as we can
 #define GPS AirGPS
@@ -130,7 +132,7 @@ uint32_t last_send_ms;       // time of last uplink
 boolean is_joined = false;   // True after Join complete
 
 boolean need_light_sleep = false;  // Should we be in low-power state?
-boolean need_deep_sleep = false;   // Should we be in lowest-power state?
+uint32_t need_deep_sleep_s = 0;   // Should we be in lowest-power state?
 boolean in_light_sleep = false;    // Are we presently in low-power
 boolean in_deep_sleep = false;     // Are we in deepest sleep?
 boolean hold_screen_on = false;    // Are we holding the screen on from key press?
@@ -500,6 +502,7 @@ void menu_power_off(void) {
   TimerStop(&ScreenOnTimer);
 
   // Must Reset to exit
+  wakeByUart = false;
   while (1) lowPowerHandler();
 }
 
@@ -816,13 +819,13 @@ boolean send_uplink(void) {
     return send_lost_uplink();
   }
   if (is_gps_lost && (now - last_lost_gps_ms) > GPS_LOST_TIME_S * 1000) {
-    // Still Lost.  Continue crying about it
+    // Still Lost.  Continue crying about it every GPS_LOST_TIME_S
     return send_lost_uplink();
   }
   if (is_gps_lost && (now - last_fix_ms) > SLEEP_WAIT_S * 1000) {
-    // Been lost a long time.  Can't tell if we're moving.
+    // Been lost a really long time.  Can't tell if we're moving.  Sleep
     need_light_sleep = true;
-    need_deep_sleep = true;
+    need_deep_sleep_s = GPS_LOST_TIME_S;
     return false;
   }
 
@@ -858,26 +861,26 @@ boolean send_uplink(void) {
   if (battery_mv > USB_POWER_VOLTAGE * 1000) {
     tx_time_ms = rest_time_ms;  // Don't slow down on USB power
     need_light_sleep = false;   // Don't blank screen
-    need_deep_sleep = false;
+    need_deep_sleep_s = 0;
   } else if (now - last_moved_ms > SLEEP_WAIT_S * 1000) {
     tx_time_ms = sleep_time_ms;  // Slowest interval
     need_light_sleep = true;
-    need_deep_sleep = true;  // Turn off GPS between checks
+    need_deep_sleep_s = SLEEP_TIME_S;  // Turn off GPS between checks
   } else if (now - last_moved_ms > REST_WAIT_S * 1000) {
     need_light_sleep = true;  // Parked or stationary
-    need_deep_sleep = false;  // Keep GPS on
+    need_deep_sleep_s = 0;  // Keep GPS on
     tx_time_ms = rest_time_ms;
   } else {
     // We recently moved.. keep the update rate high
     tx_time_ms = max_time_ms;
     need_light_sleep = false;
-    need_deep_sleep = false;
+    need_deep_sleep_s = 0;
   }
 
   // User Override
   if (stay_on) {
     need_light_sleep = false;
-    need_deep_sleep = false;
+    need_deep_sleep_s = 0;
   }
 
   char because = '?';
@@ -945,36 +948,34 @@ void onDeepSleepTimer(void) {
   deep_sleep_wake = true;
 }
 
-void deepest_sleep(uint32_t sleepfor_ms) {
+void deepest_sleep(uint32_t sleepfor_s) {
   boolean was_in_light_sleep = in_light_sleep;
 
   if (!in_light_sleep)
     enter_light_sleep();  // Turn off screen
-
-  Serial.println("SleepNow[");
-  Serial.println();
-  Serial.flush();
   in_deep_sleep = true;
+
   AirGPS.end();
+  Radio.Sleep();
   TimerStop(&BatteryUpdateTimer);
 
-  /* Set a Timer to wake */
-  TimerSetValue(&DeepSleepTimer, sleepfor_ms);
-  TimerStart(&DeepSleepTimer);
+  Serial.println("SleepNow[\n");
+  Serial.flush();
+  delay(20);
 
+  /* Set a Timer to wake */
   deep_sleep_wake = false;
-  wakeByUart = false;
+  TimerSetValue(&DeepSleepTimer, sleepfor_s * 1000);
+  TimerStart(&DeepSleepTimer);
   wake_count = 0;
   do {
     lowPowerHandler();  // SLEEP
-    // but it exits for no visible reason
     wake_count++;
   } while (!deep_sleep_wake);
-
   TimerStop(&DeepSleepTimer);
-
   Serial.printf("]up; Woke %d times\n", wake_count);
   in_deep_sleep = false;
+
   fast_start_gps();
   last_fix_ms = 0;
   uint32_t gps_start_time = millis();
@@ -997,12 +998,12 @@ void deepest_sleep(uint32_t sleepfor_ms) {
 
 void onJoinFailTimer(void) {
   screen_print("Join timed out!\n");
-  TimerStop(&JoinFailTimer);
 
-  deepest_sleep(JOIN_RETRY_TIME_S * 1000);
+  need_deep_sleep_s = JOIN_RETRY_TIME_S;
   // Now try again
 
-  deviceState = DEVICE_STATE_INIT;  //   Full re-init.
+  TimerReset(&JoinFailTimer);
+  TimerStart(&JoinFailTimer);
 }
 
 void loop() {
@@ -1014,8 +1015,9 @@ void loop() {
   if (in_light_sleep && (!need_light_sleep || in_menu || hold_screen_on)) {
     exit_light_sleep();
   }
-  if (need_deep_sleep && !in_deep_sleep && !in_menu && !hold_screen_on) {
-    deepest_sleep(SLEEP_TIME_S * 1000);
+  if (need_deep_sleep_s && !in_deep_sleep && !in_menu && !hold_screen_on) {
+    deepest_sleep(need_deep_sleep_s);
+    need_deep_sleep_s = 0;
   }
 
   // Serial.print(".");
@@ -1063,8 +1065,8 @@ void loop() {
     }
     case DEVICE_STATE_SLEEP: {
       // Serial.print("[SLEEP] ");
-      wakeByUart = true;  // Should awake before GPS activity, but just in case..
-      LoRaWAN.sleep();    // Causes serial port noise
+      // wakeByUart = true;  // Should awake before GPS activity, but just in case..
+      LoRaWAN.sleep();  // Causes serial port noise
       break;
     }
     default: {
