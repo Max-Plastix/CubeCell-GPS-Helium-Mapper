@@ -46,7 +46,7 @@ uint16_t userChannelsMask[6] = {0xFF00, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000};
 /* To represent battery voltage in one payload byte we scale it to hundredths of a volt,
  * with an offset of 2.0 volts, giving a useable range of 2.0 to 4.56v, perfect for any
  * Lithium battery technology. */
-#define ONE_BYTE_BATTERY_VOLTAGE(mV) ((uint8_t)((((mV + 5) / 10) - 200) & 0xFF)
+#define ONE_BYTE_BATTERY_V(mV) ((uint8_t) (((mV + 5) / 10) - 200) & 0xFF)
 
 /* Unset APB stuff, but CubeCellLib.a requires that we declare them */
 uint8_t nwkSKey[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -456,7 +456,7 @@ bool prepare_map_uplink(uint8_t port) {
   puc = (unsigned char *)(&speed);
   appData[appDataSize++] = puc[0];
 
-  appData[appDataSize++] = ONE_BYTE_BATTERY_VOLTAGE(battery_mv);
+  appData[appDataSize++] = ONE_BYTE_BATTERY_V(battery_mv);
  
   appData[appDataSize++] = (uint8_t)(sats & 0xFF);
   return true;
