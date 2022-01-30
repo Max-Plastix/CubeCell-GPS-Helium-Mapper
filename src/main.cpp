@@ -43,6 +43,11 @@ uint16_t userChannelsMask[6] = {0x00FF, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000};
 uint16_t userChannelsMask[6] = {0xFF00, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000};
 #endif
 
+/* To represent battery voltage in one payload byte we scale it to hundredths of a volt,
+ * with an offset of 2.0 volts, giving a useable range of 2.0 to 4.56v, perfect for any
+ * Lithium battery technology. */
+#define ONE_BYTE_BATTERY_VOLTAGE(mV) ((uint8_t)((((mV + 5) / 10) - 200) & 0xFF)
+
 /* Unset APB stuff, but CubeCellLib.a requires that we declare them */
 uint8_t nwkSKey[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 uint8_t appSKey[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -132,7 +137,7 @@ uint32_t last_send_ms;       // time of last uplink
 boolean is_joined = false;   // True after Join complete
 
 boolean need_light_sleep = false;  // Should we be in low-power state?
-uint32_t need_deep_sleep_s = 0;   // Should we be in lowest-power state?
+uint32_t need_deep_sleep_s = 0;    // Should we be in lowest-power state?
 boolean in_light_sleep = false;    // Are we presently in low-power
 boolean in_deep_sleep = false;     // Are we in deepest sleep?
 boolean hold_screen_on = false;    // Are we holding the screen on from key press?
@@ -141,8 +146,7 @@ boolean stay_on = false;           // Has the user asked the screen to STAY on?
 boolean is_gps_lost = false;    // No GPS Fix?
 uint32_t last_lost_gps_ms = 0;  // When did we last cry about no GPS
 uint32_t last_moved_ms = 0;     // When did we last notice significant movement
-
-uint16_t battery_mv;  // Last measured battery voltage in millivolts
+uint16_t battery_mv;            // Last measured battery voltage in millivolts
 
 char buffer[40];  // Scratch string buffer for display strings
 
@@ -400,7 +404,7 @@ void stopGPS() {
  */
 void update_battery_mv(void) {
   detachInterrupt(USER_KEY);  // ignore phantom button pushes
-  battery_mv = getBatteryVoltage() * VBAT_CORRECTION;
+  battery_mv = (getBatteryVoltage() * (1024.0 * VBAT_CORRECTION)) / 1024;
   attachInterrupt(USER_KEY, userKeyIRQ, BOTH);
   Serial.printf("Bat: %d mV\n", battery_mv);
 }
@@ -435,8 +439,6 @@ bool prepare_map_uplink(uint8_t port) {
   sats = GPS.satellites.value();
   // hdop = GPS.hdop.hdop();
 
-  uint16_t batteryVoltage = ((float_t)((float_t)((float_t)battery_mv * VBAT_CORRECTION) / 10) + 0.5);
-
   puc = (unsigned char *)(&lat);
   appData[appDataSize++] = puc[2];
   appData[appDataSize++] = puc[1];
@@ -454,8 +456,8 @@ bool prepare_map_uplink(uint8_t port) {
   puc = (unsigned char *)(&speed);
   appData[appDataSize++] = puc[0];
 
-  appData[appDataSize++] = (uint8_t)((batteryVoltage - 200) & 0xFF);
-
+  appData[appDataSize++] = ONE_BYTE_BATTERY_VOLTAGE(battery_mv);
+ 
   appData[appDataSize++] = (uint8_t)(sats & 0xFF);
   return true;
 }
@@ -768,11 +770,7 @@ boolean send_lost_uplink() {
   // Use last-known location; might be zero
   double lat = ((last_send_lat + 90) / 180.0) * 16777215;
   double lon = ((last_send_lon + 180) / 360.0) * 16777215;
-
   uint8_t sats = GPS.satellites.value();
-
-  uint16_t batteryVoltage = ((float_t)((float_t)((float_t)battery_mv * VBAT_CORRECTION) / 10) + 0.5);
-
   uint16_t lost_minutes = MIN(0xFFFF, (now - last_fix_ms) / 1000 / 60);
 
   appPort = FPORT_LOST_GPS;
@@ -787,7 +785,7 @@ boolean send_lost_uplink() {
   appData[appDataSize++] = puc[1];
   appData[appDataSize++] = puc[0];
 
-  appData[appDataSize++] = (uint8_t)((batteryVoltage - 200) & 0xFF);
+  appData[appDataSize++] = ONE_BYTE_BATTERY_V(battery_mv);
 
   appData[appDataSize++] = (uint8_t)(sats & 0xFF);
 
@@ -868,7 +866,7 @@ boolean send_uplink(void) {
     need_deep_sleep_s = SLEEP_TIME_S;  // Turn off GPS between checks
   } else if (now - last_moved_ms > REST_WAIT_S * 1000) {
     need_light_sleep = true;  // Parked or stationary
-    need_deep_sleep_s = 0;  // Keep GPS on
+    need_deep_sleep_s = 0;    // Keep GPS on
     tx_time_ms = rest_time_ms;
   } else {
     // We recently moved.. keep the update rate high
