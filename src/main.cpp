@@ -758,6 +758,7 @@ void setup() {
   TimerInit(&BatteryUpdateTimer, onBatteryUpdateTimer);
   TimerSetValue(&BatteryUpdateTimer, BATTERY_UPDATE_RATE_MS);
   TimerStart(&BatteryUpdateTimer);
+  update_battery_mv();
 
   TimerInit(&ScreenUpdateTimer, onScreenUpdateTimer);
   TimerSetValue(&ScreenUpdateTimer, SCREEN_UPDATE_RATE_MS);
