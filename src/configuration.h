@@ -1,6 +1,6 @@
 // Version
 #define APP_NAME "Cube Mapper"
-#define APP_VERSION "MaxP v2.3.5"
+#define APP_VERSION "MaxP v2.3.6"
 
 // -----------------------------------------------------------------------------
 // CONFIGURATION

@@ -46,7 +46,7 @@ uint16_t userChannelsMask[6] = {0xFF00, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000};
 /* To represent battery voltage in one payload byte we scale it to hundredths of a volt,
  * with an offset of 2.0 volts, giving a useable range of 2.0 to 4.56v, perfect for any
  * Lithium battery technology. */
-#define ONE_BYTE_BATTERY_V(mV) ((uint8_t) (((mV + 5) / 10) - 200) & 0xFF)
+#define ONE_BYTE_BATTERY_V(mV) ((uint8_t)(((mV + 5) / 10) - 200) & 0xFF)
 
 /* Unset APB stuff, but CubeCellLib.a requires that we declare them */
 uint8_t nwkSKey[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -368,6 +368,9 @@ void fast_start_gps() {
 
 void update_gps() {
   static boolean firstfix = true;
+  uint32_t now_fix_count;
+  static uint32_t last_fix_count = 0;
+
   while (GPSSerial.available()) {
     int c = GPSSerial.read();
     if (c > 0) {
@@ -377,9 +380,8 @@ void update_gps() {
     }
   }
 
-  if (GPS.location.isValid() && GPS.location.isUpdated() && GPS.time.isValid() && GPS.date.isValid() && GPS.satellites.value() > 3) {
-    // Serial.printf(" %02d:%02d:%02d.%02d\n", GPS.time.hour(), GPS.time.minute(), GPS.time.second(), GPS.time.centisecond());
-    // printGPSInfo();
+  now_fix_count = GPS.sentencesWithFix();
+  if (now_fix_count != last_fix_count && GPS.location.isValid() && GPS.time.isValid() && GPS.date.isValid()) {
     last_fix_ms = millis();
     if (firstfix) {
       firstfix = false;
@@ -387,7 +389,6 @@ void update_gps() {
       screen_print(buffer);
       printGPSInfo();
     }
-    GPS.location.lat();  // Reset the isUpdated
   }
 }
 
@@ -457,7 +458,7 @@ bool prepare_map_uplink(uint8_t port) {
   appData[appDataSize++] = puc[0];
 
   appData[appDataSize++] = ONE_BYTE_BATTERY_V(battery_mv);
- 
+
   appData[appDataSize++] = (uint8_t)(sats & 0xFF);
   return true;
 }
@@ -728,7 +729,8 @@ void setup() {
   /* This will switch deviceState to DEVICE_STATE_SLEEP and schedule a SEND
    timer which will switch to DEVICE_STATE_SEND if saved network info exists
    and no new JOIN is necessary */
-  LoRaWAN.ifskipjoin();
+  /* Unfortunately, it uses the inscrutible checkNetInfo() binary-only function, which appears to have bugs. */
+  // LoRaWAN.ifskipjoin();
 
   // Setup user button - this must be after LoRaWAN.ifskipjoin(), because the
   // button is used there to cancel stored settings load and initiate a new join
@@ -1063,8 +1065,8 @@ void loop() {
     }
     case DEVICE_STATE_SLEEP: {
       // Serial.print("[SLEEP] ");
-      // wakeByUart = true;  // Should awake before GPS activity, but just in case..
-      LoRaWAN.sleep();  // Causes serial port noise
+      wakeByUart = true;  // Without this, sleeps through GPS
+      LoRaWAN.sleep();    // Causes serial port noise if it does sleep
       break;
     }
     default: {
