@@ -860,15 +860,7 @@ boolean send_uplink(void) {
                 in_deadzone ? 'D' : '-');
 #endif
 
-  // Deadzone means we don't send unless asked
-  if (in_deadzone && !justSendNow)
-    return false;
-
-  // Don't send any mapper packets for time/distance without GPS fix
-  if (is_gps_lost)
-    return false;
-
-  /* Set tx interval based on time since last movement: */
+   /* Set tx interval (and screen state!) based on time since last movement: */
   if ((now - last_moved_ms < REST_WAIT_S * 1000) && (battery_mv > REST_LOW_VOLTAGE * 1000)) {
     // If we recently moved and battery is good.. keep the update rate high and screen on
     tx_time_ms = max_time_ms;
@@ -892,11 +884,21 @@ boolean send_uplink(void) {
     tx_time_ms = rest_time_ms;
   }
 
-  // User Override!
+  // Last, there is User Override!
   if (stay_on) {
     need_light_sleep = false;
     need_deep_sleep_s = 0;
   }
+
+  /* Do we send an uplink now? */
+
+  // Deadzone means we don't send unless asked
+  if (in_deadzone && !justSendNow)
+    return false;
+
+  // Don't send any mapper packets for time/distance without GPS fix
+  if (is_gps_lost)
+    return false;
 
   char because = '?';
   if (justSendNow) {
