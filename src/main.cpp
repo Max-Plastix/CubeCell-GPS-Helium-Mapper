@@ -852,12 +852,16 @@ boolean send_uplink(void) {
   in_deadzone = (deadzone_dist <= deadzone_radius_m);
 
 #if 1
-  Serial.printf("[Time %d / %ds, Moved %dm in %ds %c]\n",
+  Serial.printf("[Time %d / %ds, Moved %d / %dm in %ds %c %c %c]\n",
                 (now - last_send_ms) / 1000,   // Time
                 tx_time_ms / 1000,             // interval
                 (int32_t)dist_moved,           // moved
+                (int32_t)min_dist_moved,
                 (now - last_moved_ms) / 1000,  // last movement ago
-                in_deadzone ? 'D' : '-');
+                in_deadzone ? 'D' : 'd',
+                need_light_sleep ? 'S' : 's',
+                need_deep_sleep_s != 0 ? 'Z' : 'z'
+                );
 #endif
 
    /* Set tx interval (and screen state!) based on time since last movement: */
