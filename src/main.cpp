@@ -869,16 +869,16 @@ boolean send_uplink(void) {
     return false;
 
   /* Set tx interval based on time since last movement: */
-
   if ((now - last_moved_ms < REST_WAIT_S * 1000) && (battery_mv > REST_LOW_VOLTAGE * 1000)) {
-    // If we recently moved and battery is good.. keep the update rate high
+    // If we recently moved and battery is good.. keep the update rate high and screen on
     tx_time_ms = max_time_ms;
     need_light_sleep = false;
     need_deep_sleep_s = 0;
   } else if (battery_mv > USB_POWER_VOLTAGE * 1000) {
     // Don't slow down on USB power, or topped-off battery, ever
     tx_time_ms = max_time_ms;
-    need_light_sleep = false;
+    // However, OLED screens can burn-in, so do turn it off while stationary
+    need_light_sleep = (now - last_moved_ms > REST_WAIT_S * 1000);
     need_deep_sleep_s = 0;
   } else if (now - last_moved_ms > SLEEP_WAIT_S * 1000) {
     // Been a really long time, Slowest interval, GPS OFF
