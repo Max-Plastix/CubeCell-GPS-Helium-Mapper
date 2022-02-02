@@ -630,6 +630,7 @@ void gps_time(char *buffer, uint8_t size) {
 void screen_header(void) {
   uint32_t sats;
   uint32_t now = millis();
+  char bat_level = '?';
 
   sats = GPS.satellites.value();
 
@@ -656,15 +657,24 @@ void screen_header(void) {
   disp->drawString(disp->getWidth() - SATELLITE_IMAGE_WIDTH - 4, 2, itoa(sats, buffer, 10));
   disp->drawXbm(disp->getWidth() - SATELLITE_IMAGE_WIDTH, 0, SATELLITE_IMAGE_WIDTH, SATELLITE_IMAGE_HEIGHT, SATELLITE_IMAGE);
 
+  if (battery_mv > USB_POWER_VOLTAGE * 1000)
+    bat_level = 'U';
+  else if (battery_mv > REST_LOW_VOLTAGE * 1000)
+    bat_level = 'H';
+  else if (battery_mv > SLEEP_LOW_VOLTAGE * 1000)
+    bat_level = 'L';
+  else
+    bat_level = 'Z';
+
   // Second status row:
   snprintf(buffer, sizeof(buffer), "%ds / %ds   %dm  %c%c%c%c\n",
-           (now - last_send_ms) / 1000,                        // Time since last send
-           tx_time_ms / 1000,                                  // Interval Time
-           (int)min_dist_moved,                                // Interval Distance
-           battery_mv > USB_POWER_VOLTAGE * 1000 ? 'U' : '-',  // U for Unlimited Power (USB)
-           stay_on ? 'S' : '-',                                // S for Screen Stay ON
-           in_deadzone ? 'D' : '-',                            // D for Deadzone
-           !is_joined ? 'X' : '-'                              // X for Not Joined Yet
+           (now - last_send_ms) / 1000,  // Time since last send
+           tx_time_ms / 1000,            // Interval Time
+           (int)min_dist_moved,          // Interval Distance
+           bat_level,                    // U for Unlimited Power (USB), Hi, Low, Zero
+           stay_on ? 'S' : '-',          // S for Screen Stay ON
+           in_deadzone ? 'D' : '-',      // D for Deadzone
+           !is_joined ? 'X' : '-'        // X for Not Joined Yet
   );
   disp->setTextAlignment(TEXT_ALIGN_LEFT);
   disp->drawString(0, 12, buffer);
@@ -858,27 +868,31 @@ boolean send_uplink(void) {
   if (is_gps_lost)
     return false;
 
-  // Set tx interval based on time since last movement.
-  if (battery_mv > USB_POWER_VOLTAGE * 1000) {
-    tx_time_ms = rest_time_ms;  // Don't slow down on USB power
-    need_light_sleep = false;   // Don't blank screen
-    need_deep_sleep_s = 0;
-  } else if (now - last_moved_ms > SLEEP_WAIT_S * 1000) {
-    tx_time_ms = sleep_time_ms;  // Slowest interval
-    need_light_sleep = true;
-    need_deep_sleep_s = SLEEP_TIME_S;  // Turn off GPS between checks
-  } else if (now - last_moved_ms > REST_WAIT_S * 1000) {
-    need_light_sleep = true;  // Parked or stationary
-    need_deep_sleep_s = 0;    // Keep GPS on
-    tx_time_ms = rest_time_ms;
-  } else {
-    // We recently moved.. keep the update rate high
+  /* Set tx interval based on time since last movement: */
+
+  if ((now - last_moved_ms < REST_WAIT_S * 1000) && (battery_mv > REST_LOW_VOLTAGE * 1000)) {
+    // If we recently moved and battery is good.. keep the update rate high
     tx_time_ms = max_time_ms;
     need_light_sleep = false;
     need_deep_sleep_s = 0;
+  } else if (battery_mv > USB_POWER_VOLTAGE * 1000) {
+    // Don't slow down on USB power, or topped-off battery, ever
+    tx_time_ms = max_time_ms;
+    need_light_sleep = false;
+    need_deep_sleep_s = 0;
+  } else if (now - last_moved_ms > SLEEP_WAIT_S * 1000) {
+    // Been a really long time, Slowest interval, GPS OFF
+    tx_time_ms = sleep_time_ms;
+    need_light_sleep = true;
+    need_deep_sleep_s = SLEEP_TIME_S;
+  } else {
+    // Parked/stationary or battery below REST_LOW_VOLTAGE
+    need_light_sleep = true;
+    need_deep_sleep_s = 0;  // Keep GPS on
+    tx_time_ms = rest_time_ms;
   }
 
-  // User Override
+  // User Override!
   if (stay_on) {
     need_light_sleep = false;
     need_deep_sleep_s = 0;
