@@ -11,19 +11,25 @@
  * Apologies for inconsistent style and naming; there were many hands in this code and Heltec has quite the Platform library.
  *
  */
+
 #include "Arduino.h"
-#include "GPS_Air530Z.h"      // Forsaken Heltec packed-in library
-#include "HT_DisplayFonts.h"  // For Arial
-#include "HT_SSD1306Wire.h"   // HelTec's old version of SSD1306Wire.h
-#include "LoRaWan_APP.h"
-#include "cyPm.h"  // For deep sleep
-#include "hw.h"    // for CyDelay()
-#include "timeServer.h"
+/* CubeCell bundlesfonts into their standard Platform library.
+ * Unfortunately, it declares them right in the.h Header file itself, and in their library binary, 
+ * so we have to tolerate getting TWO copies of each font included in flash. */
+#include "HT_Display.h"
+#include "HT_SSD1306Wire.h"   // HelTec's old version of SSD1306Wire.h, pulls in HT_DisplayFonts.h
+
+#include "GPS_Air530Z.h"  // Bastard plagerized Heltec packed-in library
+#include "LoRaWan_APP.h"      // Global values for IDs and LoRa state
+#include "configuration.h"    // User configuration
+#include "credentials.h"      // Helium LoRaWAN credentials
+#include "cyPm.h"             // For deep sleep
+#include "hw.h"               // for CyDelay()
+#include "timeServer.h"       // Timer handlers
+
 //#include "TinyGPS++.h"        // More recent/superior library
-#include "configuration.h"  // User configuration
-#include "credentials.h"    // Helium LoRaWAN credentials
-#include "fonts.inc"        // for Custom_ArialMT_Plain_10
-#include "images.h"         // For Satellite icon
+
+#include "images.h"  // For Satellite icon
 
 extern SSD1306Wire display;     // Defined in LoRaWan_APP.cpp (!)
 extern uint8_t isDispayOn;      // [sic] Defined in LoRaWan_APP.cpp
@@ -303,7 +309,7 @@ void screen_print(const char *text) {
 void screen_setup() {
   // Display instance
   disp = &display;
-  disp->setFont(Custom_ArialMT_Plain_10);
+  disp->setFont(ArialMT_Plain_10);
 
   // Scroll buffer
   disp->setLogBuffer(4, 40);
@@ -688,7 +694,7 @@ void screen_header(void) {
 #define MARGIN 15
 
 void draw_screen(void) {
-  disp->setFont(Custom_ArialMT_Plain_10);
+  disp->setFont(ArialMT_Plain_10);
   disp->clear();
   screen_header();
 
@@ -853,18 +859,15 @@ boolean send_uplink(void) {
 
 #if 1
   Serial.printf("[Time %d / %ds, Moved %d / %dm in %ds %c %c %c]\n",
-                (now - last_send_ms) / 1000,   // Time
-                tx_time_ms / 1000,             // interval
-                (int32_t)dist_moved,           // moved
+                (now - last_send_ms) / 1000,  // Time
+                tx_time_ms / 1000,            // interval
+                (int32_t)dist_moved,          // moved
                 (int32_t)min_dist_moved,
                 (now - last_moved_ms) / 1000,  // last movement ago
-                in_deadzone ? 'D' : 'd',
-                need_light_sleep ? 'S' : 's',
-                need_deep_sleep_s != 0 ? 'Z' : 'z'
-                );
+                in_deadzone ? 'D' : 'd', need_light_sleep ? 'S' : 's', need_deep_sleep_s != 0 ? 'Z' : 'z');
 #endif
 
-   /* Set tx interval (and screen state!) based on time since last movement: */
+  /* Set tx interval (and screen state!) based on time since last movement: */
   if ((now - last_moved_ms < REST_WAIT_S * 1000) && (battery_mv > REST_LOW_VOLTAGE * 1000)) {
     // If we recently moved and battery is good.. keep the update rate high and screen on
     tx_time_ms = max_time_ms;
