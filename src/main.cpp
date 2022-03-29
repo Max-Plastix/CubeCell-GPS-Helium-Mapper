@@ -128,6 +128,7 @@ const char *menu_cur;            // Highlighted menu name
 const char *menu_next;           // Next menu name
 boolean is_highlighted = false;  // highlight the current menu entry
 int menu_entry = 0;              // selected item
+boolean go_menu_select = false;  // Do the menu thing(in main context)
 
 boolean justSendNow = false;  // Send an uplink right now
 
@@ -317,27 +318,32 @@ void screen_setup() {
 
 uint32_t gps_start_time;
 
-void start_gps(void) {
-  Serial.println("Starting GPS:");
-  AirGPS.begin(115200);  // Faster messages; less CPU, more idle.
-  AirGPS.setmode(MODE_GPS_BEIDOU_GLONASS);
-  AirGPS.setNMEA(NMEA_RMC | NMEA_GGA);  // Eliminate unused message traffic like SV
-
-#if 1
-  // GPSSerial.write("$PCAS02,500*1A\r\n"); /* 500mS updates */
-  GPSSerial.write("$PCAS02,1000*2E\r\n"); /* 1S updates */
-  GPSSerial.flush();
-  delay(10);
-#endif
-
+void configure_gps(void) {
   // Adjust the Green 1pps LED to have shorter blinks.
   const uint8_t cmdbuf[] = {0xBA, 0xCE, 0x10, 0x00, 0x06, 0x03, 0x40, 0x42, 0x0F, 0x00, 0x10, 0x27, 0x00,
                             0x00, 0x03, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x63, 0x69, 0x15, 0x0B};
   /* CFG-TX Time Pulse: 10mS width (vs 100), only if fixed, UTC Time, Automatic source */
   GPSSerial.write(cmdbuf, sizeof(cmdbuf));
-  GPSSerial.flush();
-  delay(10);
+  delay(50);
 
+  AirGPS.setmode(MODE_GPS_BEIDOU_GLONASS);
+  delay(50);
+
+  AirGPS.setNMEA(NMEA_RMC | NMEA_GGA);  // Eliminate unused message traffic like SV
+  delay(50);
+
+#if 0
+  // GPSSerial.write("$PCAS02,500*1A\r\n"); /* 500mS updates */
+  GPSSerial.write("$PCAS02,1000*2E\r\n"); /* 1S updates */
+  GPSSerial.flush();
+  delay(50);
+#endif
+}
+
+void start_gps(void) {
+  Serial.println("Starting GPS:");
+  AirGPS.begin(115200);  // Faster messages; less CPU, more idle.
+  configure_gps();
   gps_start_time = millis();
 }
 
@@ -351,24 +357,7 @@ void fast_start_gps() {
     if (millis() - gps_start_time > SLEEP_GPS_TIMEOUT_S * 1000)
       return;
   }
-  AirGPS.setmode(MODE_GPS_BEIDOU_GLONASS);
-  AirGPS.setNMEA(NMEA_RMC | NMEA_GGA);  // Eliminate unused message traffic like SV
-
-#if 1
-  // GPSSerial.write("$PCAS02,500*1A\r\n"); /* 500mS updates */
-  GPSSerial.write("$PCAS02,1000*2E\r\n"); /* 1S updates */
-  GPSSerial.flush();
-  delay(10);
-#endif
-
-  // Adjust the Green 1pps LED to have shorter blinks.
-  const uint8_t cmdbuf[] = {0xBA, 0xCE, 0x10, 0x00, 0x06, 0x03, 0x40, 0x42, 0x0F, 0x00, 0x10, 0x27, 0x00,
-                            0x00, 0x03, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x63, 0x69, 0x15, 0x0B};
-  /* CFG-TX Time Pulse: 10mS width (vs 100), only if fixed, UTC Time, Automatic source */
-  GPSSerial.write(cmdbuf, sizeof(cmdbuf));
-  GPSSerial.flush();
-  delay(10);
-
+  configure_gps();
   gps_start_time = millis();
 }
 
@@ -423,7 +412,7 @@ void onBatteryUpdateTimer(void) {
 }
 
 /* Populate appData/appDataSize with Mapper frame */
-bool prepare_map_uplink(uint8_t port) {
+boolean prepare_map_uplink(uint8_t port) {
   uint32_t lat, lon;
   int alt, speed, sats;
 
@@ -471,12 +460,15 @@ bool prepare_map_uplink(uint8_t port) {
 
 void gps_passthrough(void) {
   Serial.println("GPS Passthrough forever...");
-
+  int c;
   while (1) {
-    if (GPSSerial.available())
-      Serial.write(GPSSerial.read());
-    if (Serial.available())
-      GPSSerial.write(Serial.read());
+    c = GPSSerial.read();
+    if (c != -1)
+      Serial.write(c);
+
+    c = Serial.read();
+    if (c != -1) {
+      GPSSerial.write(c); }   
   }
 }
 
@@ -593,7 +585,7 @@ void menu_deselected(void) {
 void onKeyDownTimer(void) {
   // Long Press!
   long_press = true;
-  menu_selected();
+  go_menu_select = true;
 }
 
 // Interrupt handler for button press
@@ -1032,6 +1024,11 @@ void onJoinFailTimer(void) {
 
 void loop() {
   static uint32_t lora_start_time;
+
+  if (go_menu_select) {
+    go_menu_select = false;
+    menu_selected();
+  }
 
   if (need_light_sleep && !in_light_sleep && !in_menu && !hold_screen_on) {
     enter_light_sleep();
