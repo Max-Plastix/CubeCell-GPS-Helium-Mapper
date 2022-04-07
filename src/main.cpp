@@ -36,7 +36,8 @@ extern uint8_t isDispayOn;      // [sic] Defined in LoRaWan_APP.cpp
 #define isDisplayOn isDispayOn  // Seriously.  It's wrong all over LoRaWan_APP.
 
 extern uint32_t UpLinkCounter;    // FCnt, Frame Count, Uplink Sequence Number
-extern bool wakeByUart;           // Declared in binary-only AT_Command.o!
+extern bool wakeByUart;           // Declared in no-source Heltec binary that was
+// \cores\asr650x\projects\CubeCellLib.a(AT_Command.o):D:\lib\650x/AT_Command.c:54
 extern HardwareSerial GPSSerial;  // Defined in GPSTrans.cpp as UART_NUM_1
 Air530ZClass AirGPS;              // Just for Init.  Has some Air530Z specials.
 // TinyGPSPlus GPS;                  // Avoid the Heltec library as much as we can
@@ -975,7 +976,7 @@ void deepest_sleep(uint32_t sleepfor_s) {
   Radio.Sleep();
   TimerStop(&BatteryUpdateTimer);
 
-  Serial.println("SleepNow[\n");
+  Serial.printf("Sleep %d s[\n", sleepfor_s);
   Serial.flush();
   delay(20);
 
@@ -1015,7 +1016,7 @@ void deepest_sleep(uint32_t sleepfor_s) {
 void onJoinFailTimer(void) {
   screen_print("Join timed out!\n");
 
-  need_deep_sleep_s = JOIN_RETRY_TIME_S;
+  //need_deep_sleep_s = JOIN_RETRY_TIME_S;
   // Now try again
 
   TimerReset(&JoinFailTimer);
