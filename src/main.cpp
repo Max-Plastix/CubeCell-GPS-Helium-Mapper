@@ -136,6 +136,7 @@ boolean justSendNow = false;  // Send an uplink right now
 boolean key_down = false;    // User Key pressed right now?
 uint32_t keyDownTime;        // how long was it pressed for
 void userKeyIRQ(void);       // (soft) interrupt handler for key press
+volatile boolean keyIRQ = false;      // IRQ flag for key event
 boolean long_press = false;  // did this count as a Long press?
 
 uint32_t last_fix_ms = 0;    // When did we last get a good GPS fix?
@@ -160,6 +161,7 @@ char buffer[40];  // Scratch string buffer for display strings
 
 void onDeepSleepTimer(void);
 void onJoinFailTimer(void);
+void deepest_sleep(uint32_t sleepfor_s);
 
 // SK6812 (WS2812).  DIN is IO13/GP13/Pin45
 void testRGB(void) {
@@ -538,9 +540,23 @@ void menu_stay_on(void) {
   stay_on = !stay_on;
 }
 
+void menu_experiment(void) {
+  screen_print("\nExperiment..\n");
+
+  delay(2000);
+  keyIRQ = false;
+  deepest_sleep(5);
+
+  screen_print("Done\n");
+
+  // uint32 reason = CySysGetResetReason();
+}
+
 struct menu_item menu[] = {{"Send Now", menu_send_now},           {"Power Off", menu_power_off},     {"Distance +10", menu_distance_plus},
                            {"Distance -10", menu_distance_minus}, {"Time +60", menu_time_plus},      {"Time -60", menu_time_minus},
-                           {"Deadzone Here", menu_deadzone_here}, {"USB GPS", menu_gps_passthrough}, {"Stay ON", menu_stay_on}};
+                           {"Deadzone Here", menu_deadzone_here}, {"USB GPS", menu_gps_passthrough}, {"Stay ON", menu_stay_on},
+                           //{"Experiment", menu_experiment}
+                           };
 #define MENU_ENTRIES (sizeof(menu) / sizeof(menu[0]))
 
 void onMenuIdleTimer(void) {
@@ -591,6 +607,14 @@ void onKeyDownTimer(void) {
 
 // Interrupt handler for button press
 void userKeyIRQ(void) {
+  keyIRQ = true;
+}
+
+void userKeyIRQ_process(void) {
+  if (!keyIRQ)
+    return;
+  keyIRQ = false;
+
   if (!key_down && digitalRead(USER_KEY) == LOW) {
     // Key Pressed
     key_down = true;
@@ -756,7 +780,7 @@ void setup() {
   TimerSetValue(&MenuIdleTimer, MENU_TIMEOUT_MS);
 
   TimerInit(&DeepSleepTimer, onDeepSleepTimer);
-  TimerSetValue(&DeepSleepTimer, SLEEP_TIME_S * 1000);
+  //TimerSetValue(&DeepSleepTimer, SLEEP_TIME_S * 1000);
 
   TimerInit(&ScreenOnTimer, onScreenOnTimer);
   TimerSetValue(&ScreenOnTimer, SCREEN_ON_TIME_MS);
@@ -985,10 +1009,11 @@ void deepest_sleep(uint32_t sleepfor_s) {
   TimerSetValue(&DeepSleepTimer, sleepfor_s * 1000);
   TimerStart(&DeepSleepTimer);
   wake_count = 0;
+  wakeByUart = false;
   do {
     lowPowerHandler();  // SLEEP
     wake_count++;
-  } while (!deep_sleep_wake);
+  } while (!deep_sleep_wake && !keyIRQ);
   TimerStop(&DeepSleepTimer);
   Serial.printf("]up; Woke %d times\n", wake_count);
   in_deep_sleep = false;
@@ -1026,6 +1051,9 @@ void onJoinFailTimer(void) {
 void loop() {
   static uint32_t lora_start_time;
 
+  // Handle any pending key events
+  userKeyIRQ_process();
+  
   if (go_menu_select) {
     go_menu_select = false;
     menu_selected();
