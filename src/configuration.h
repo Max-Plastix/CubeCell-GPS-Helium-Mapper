@@ -22,7 +22,7 @@
 #define SLEEP_GPS_TIMEOUT_S 60      // How long to wait for a GPS fix each time we wake
 #define SLEEP_LOW_VOLTAGE 3.3       // Below this voltage, stay in deep sleep regardless of movement
 
-#define USB_POWER_VOLTAGE 4.11      // Above this voltage, assume we have unlimited power (4.1 is typical)
+#define USB_POWER_VOLTAGE 4.10      // Above this voltage, assume we have unlimited power (4.1 is typical)
 #define GPS_LOST_WAIT_S ( 5 * 60)   // How long after losing GPS do we call it lost?
 #define GPS_LOST_TIME_S (15 * 60)   // How often to send Lost GPS packets?
 

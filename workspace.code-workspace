@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"*.tcc": "cpp",
+			"fstream": "cpp",
+			"iosfwd": "cpp",
+			"type_traits": "cpp",
+			"cstdio": "cpp",
+			"*.inc": "cpp",
+			"cypm.h": "c"
+		}
+	}
+}

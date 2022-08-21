@@ -6,3 +6,5 @@
 pio.map
 output.map
 my.platformio.ini
+.vscode/extensions.json
+workspace.code-workspace
