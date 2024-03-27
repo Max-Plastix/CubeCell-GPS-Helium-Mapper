@@ -1082,7 +1082,6 @@ void loop() {
 #endif
       printDevParam();
       LoRaWAN.init(loraWanClass, loraWanRegion);
-      LoRaWAN.setDataRateForNoADR(3);  // Set DR_3 / SF7
       // deviceState = DEVICE_STATE_JOIN;
       break;
     }
